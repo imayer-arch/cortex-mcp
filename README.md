@@ -33,12 +33,22 @@ En resumen: **sin CORTEX** tenés que buscar y cruzar información en muchos rep
 - Node.js >= 18
 - Variable de entorno **WORKSPACE_ROOT** apuntando a la carpeta que contiene tus repos (ej. bff-moor, ms-application, moor-sql, …)
 
+### Búsqueda por embeddings (opcional)
+
+Para mejorar **cortex_ask_why** con búsqueda semántica (similitud coseno sobre vectores), instalá la dependencia opcional y activá con env:
+
+- `npm install` (incluye `optionalDependencies`: `@xenova/transformers`)
+- En la config MCP, en `env`: **CORTEX_EMBED=1** (o `true`). Sin esto se usa búsqueda por términos (siempre disponible).
+
+- **CORTEX_DEBUG=1**: opcional; escribe en consola un resumen del indexado (ej. cantidad de entradas por workspace).
+
 ## Instalación
 
 ```bash
 cd cortex-mcp
 npm install
 npm run build
+npm test   # opcional: tests de discovery, store y persistence
 ```
 
 ## Uso en Cursor
@@ -52,7 +62,9 @@ En la config MCP (ej. `%APPDATA%\Cursor\User\globalStorage\cursor.mcp\mcp.json` 
       "command": "node",
       "args": ["C:/ruta/a/cortex-mcp/dist/index.js"],
       "env": {
-        "WORKSPACE_ROOT": "C:/ruta/a/tus/Projects"
+        "WORKSPACE_ROOT": "C:/ruta/a/tus/Projects",
+        "CORTEX_EMBED": "1",
+        "CORTEX_DEBUG": "0"
       }
     }
   }
@@ -98,6 +110,7 @@ Reiniciá Cursor o recargá MCP.
 - **Contratos entre servicios:** Rutas expuestas por cada repo:
   - **NestJS/Express:** `@Controller`, `@Get`/`@Post`/etc. con método, path, body/response type.
   - **Spring Boot (Kotlin/Java):** `@RestController`, `@GetMapping`/`@PostMapping`/etc. en `src/main/kotlin` o `src/main/java`. Detección por `build.gradle.kts`, `build.gradle` o `pom.xml` con spring-boot.
+  - **Go (chi, echo, gin, gorilla/mux):** Rutas en `cmd`, `internal`, `pkg`, `api` (`.Get("/path", ...)`, `.HandleFunc`, etc.). Detección por `go.mod` o `main.go`/`cmd`.
 - **Índice "qué hace este repo":** Por repo: descripción, cantidad de rutas, a qué servicios llama, variables de entorno. Generado desde código, no desde README.
 - **Dependencias entre repos:** Uso de `configService.get('X_HOST')` y clientes HTTP (axios) en Node; en Spring: `RestTemplate`/`WebClient` con base URL desde `@Value("${...}")`.
 - **Mapeo endpoint → servicio:** En Node: `createAxiosInstance` + `configService.get('...')`. En Spring: `RestTemplate`/`WebClient` con URL de config. Es **dinámico**: no hay nombres de repo fijos; el destino se resuelve por variable de env/config y por los IDs de repos del workspace. Este mapeo aparece en **cortex_get_context** (por repo) y en **cortex_get_endpoint_mapping** (opcional: filtrar por `fromRepo` o `toService`).

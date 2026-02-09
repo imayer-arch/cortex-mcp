@@ -47,7 +47,7 @@ export function detectExpress(absolutePath: string): boolean {
 export interface DiscoveredRepo {
   id: string;
   name: string;
-  type: "nestjs" | "express" | "sql" | "front" | "spring" | "other";
+  type: "nestjs" | "express" | "sql" | "front" | "spring" | "go" | "other";
   absolutePath: string;
   /** Relative to repo root, e.g. src/controllers */
   controllersPath: string;
@@ -70,6 +70,16 @@ export function detectSpring(absolutePath: string): boolean {
     const c = fs.readFileSync(pom, "utf-8");
     if (/spring-boot|springframework\.boot/.test(c)) return true;
   }
+  return false;
+}
+
+export function detectGo(absolutePath: string): boolean {
+  const goMod = path.join(absolutePath, "go.mod");
+  if (fs.existsSync(goMod)) return true;
+  const mainGo = path.join(absolutePath, "main.go");
+  if (fs.existsSync(mainGo)) return true;
+  const cmdDir = path.join(absolutePath, "cmd");
+  if (fs.existsSync(cmdDir) && fs.statSync(cmdDir).isDirectory()) return true;
   return false;
 }
 
@@ -129,6 +139,18 @@ export function discoverRepos(workspaceRoot: string): DiscoveredRepo[] {
         absolutePath,
         controllersPath: "src/main/kotlin",
         description: readJsonSafe<{ description?: string }>(path.join(absolutePath, "pom.xml")) ? undefined : undefined,
+      });
+      continue;
+    }
+
+    if (detectGo(absolutePath)) {
+      result.push({
+        id: d.name,
+        name: humanizeDirName(d.name),
+        type: "go",
+        absolutePath,
+        controllersPath: "",
+        description: undefined,
       });
       continue;
     }

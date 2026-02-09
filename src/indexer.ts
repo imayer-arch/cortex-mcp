@@ -5,10 +5,13 @@ import { EXCLUDE_DIRS } from "./config/workspace.js";
 import type { MemoryEntry } from "./memory/types.js";
 import { setMemory } from "./memory/store.js";
 import { loadFromDisk, saveToDisk } from "./memory/persistence.js";
+import { computeEmbeddingsForEntries } from "./embeddings.js";
 import { indexCode } from "./code/indexer.js";
 import { discoverRepos } from "./code/discovery.js";
 
 const MAX_FILE_BYTES = 500 * 1024; // 500 KB por doc
+const MAX_DOC_ENTRIES_PER_REPO = 100; // límite por repo para docs/ADRs
+const CORTEX_DEBUG = process.env.CORTEX_DEBUG === "1" || process.env.CORTEX_DEBUG === "true";
 
 function readFileSafe(filePath: string): string | null {
   try {
@@ -67,10 +70,11 @@ export function indexWorkspace(workspaceRoot: string): MemoryEntry[] {
   for (const repo of repoDirs) {
     const repoPath = path.join(workspaceRoot, repo.name);
     const source = repo.name;
+    let repoDocCount = 0;
 
     // README en la raíz del repo
     const readmePath = path.join(repoPath, "README.md");
-    if (fs.existsSync(readmePath)) {
+    if (fs.existsSync(readmePath) && repoDocCount < MAX_DOC_ENTRIES_PER_REPO) {
       const content = readFileSafe(readmePath);
       if (content) {
         const title = extractTitleFromMarkdown(content) || `${source} — README`;
@@ -86,14 +90,16 @@ export function indexWorkspace(workspaceRoot: string): MemoryEntry[] {
           tags: extractTagsFromContent(content),
           references: extractReferences(content),
         });
+        repoDocCount++;
       }
     }
 
     // docs/*.md
     const docsPath = path.join(repoPath, "docs");
-    if (fs.existsSync(docsPath) && fs.statSync(docsPath).isDirectory()) {
+    if (fs.existsSync(docsPath) && fs.statSync(docsPath).isDirectory() && repoDocCount < MAX_DOC_ENTRIES_PER_REPO) {
       const docFiles = fs.readdirSync(docsPath, { withFileTypes: true });
       for (const f of docFiles) {
+        if (repoDocCount >= MAX_DOC_ENTRIES_PER_REPO) break;
         if (!f.isFile() || !f.name.endsWith(".md")) continue;
         const fullPath = path.join(docsPath, f.name);
         const content = readFileSafe(fullPath);
@@ -112,6 +118,7 @@ export function indexWorkspace(workspaceRoot: string): MemoryEntry[] {
           tags: extractTagsFromContent(content),
           references: extractReferences(content),
         });
+        repoDocCount++;
       }
     }
 
@@ -119,9 +126,11 @@ export function indexWorkspace(workspaceRoot: string): MemoryEntry[] {
     const adrRoot = path.join(repoPath, "docs", "adr");
     const adrDirs = [repoPath, adrRoot];
     for (const adrDir of adrDirs) {
+      if (repoDocCount >= MAX_DOC_ENTRIES_PER_REPO) break;
       if (!fs.existsSync(adrDir) || !fs.statSync(adrDir).isDirectory()) continue;
       const files = fs.readdirSync(adrDir, { withFileTypes: true });
       for (const f of files) {
+        if (repoDocCount >= MAX_DOC_ENTRIES_PER_REPO) break;
         if (!f.isFile() || !f.name.endsWith(".md")) continue;
         if (adrDir === repoPath && !/^ADR/i.test(f.name)) continue;
         const fullPath = path.join(adrDir, f.name);
@@ -140,14 +149,16 @@ export function indexWorkspace(workspaceRoot: string): MemoryEntry[] {
           tags: extractTagsFromContent(content),
           references: extractReferences(content),
         });
+        repoDocCount++;
       }
     }
   }
+  if (CORTEX_DEBUG) console.debug("[CORTEX] indexWorkspace entries:", entries.length);
 
   return entries;
 }
 
-export function refreshMemory(forceFull = false): MemoryEntry[] {
+export async function refreshMemory(forceFull = false): Promise<MemoryEntry[]> {
   const root = getWorkspaceRoot();
   const repos = discoverRepos(root);
   const repoMTimes: Record<string, number> = {};
@@ -178,6 +189,11 @@ export function refreshMemory(forceFull = false): MemoryEntry[] {
   const docEntries = indexWorkspace(root);
   const codeEntries = indexCode(root);
   const all = [...docEntries, ...codeEntries];
+  try {
+    await computeEmbeddingsForEntries(all);
+  } catch {
+    /* embeddings opcionales */
+  }
   setMemory(all);
   saveToDisk(all, repoMTimes);
   return all;

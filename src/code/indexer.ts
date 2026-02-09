@@ -7,6 +7,7 @@ import { extractServiceCalls } from "./dependencies.js";
 import { extractOutboundMappings, type OutboundCall } from "./outbound-calls.js";
 import { extractOutboundSpringMappings } from "./outbound-spring.js";
 import { extractSpringRoutes } from "./routes-spring.js";
+import { extractGoRoutes } from "./routes-go.js";
 import { glossaryFromRoutes } from "./glossary.js";
 import { extractConventions } from "./conventions.js";
 import { extractTablesFromSqlRepo } from "./db.js";
@@ -80,22 +81,26 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
       continue;
     }
 
-    if (repo.type === "nestjs" || repo.type === "express" || repo.type === "spring") {
+    if (repo.type === "nestjs" || repo.type === "express" || repo.type === "spring" || repo.type === "go") {
       const routes =
         repo.type === "nestjs"
           ? extractNestRoutes(repo, workspaceRoot)
           : repo.type === "spring"
             ? extractSpringRoutes(repo, workspaceRoot)
-            : [];
+            : repo.type === "go"
+              ? extractGoRoutes(repo, workspaceRoot)
+              : [];
       const envVars = collectEnvVars(repo.absolutePath);
       const calls =
-        repo.type === "spring"
+        repo.type === "spring" || repo.type === "go"
           ? []
           : extractServiceCalls(repo.absolutePath, repo.id, workspaceRoot, repoIds);
       const outboundMappings =
         repo.type === "spring"
           ? extractOutboundSpringMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds)
-          : extractOutboundMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds);
+          : repo.type === "go"
+            ? []
+            : extractOutboundMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds);
       const conventions = extractConventions(repo.absolutePath, repo.id, workspaceRoot);
       const glossaryTerms = glossaryFromRoutes(repo.id, routes, repo.controllersPath);
 

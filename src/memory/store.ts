@@ -92,6 +92,34 @@ export function searchMemory(query: string, limit = 20): MemoryEntry[] {
     .map((s) => s.entry);
 }
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0,
+    na = 0,
+    nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  const den = Math.sqrt(na) * Math.sqrt(nb);
+  return den > 0 ? dot / den : 0;
+}
+
+/** Búsqueda por similitud de embeddings (coseno). Solo entradas con embedding; la query ya debe estar vectorizada. */
+export function searchMemoryByEmbedding(queryEmbedding: number[], limit = 20): MemoryEntry[] {
+  const withEmb = memory.filter((e) => e.embedding && e.embedding.length === queryEmbedding.length);
+  if (withEmb.length === 0) return [];
+  const scored = withEmb.map((entry) => ({
+    entry,
+    score: cosineSimilarity(queryEmbedding, entry.embedding!),
+  }));
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((s) => s.entry);
+}
+
 /**
  * Buscar por path o identificador (ej. nombre de archivo, endpoint).
  */

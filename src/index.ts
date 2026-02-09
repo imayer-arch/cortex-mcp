@@ -6,6 +6,7 @@ import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprot
 import { refreshMemory } from "./indexer.js";
 import {
   searchMemory,
+  searchMemoryByEmbedding,
   findByIdentifier,
   findDecisions,
   findContracts,
@@ -16,6 +17,7 @@ import {
   countCallersOfService,
   getMemory,
 } from "./memory/store.js";
+import { getEmbedder } from "./embeddings.js";
 import {
   formatAskWhy,
   formatGetContext,
@@ -154,7 +156,7 @@ async function main() {
     try {
       if (name === "cortex_refresh") {
         const forceFull = a.forceFull === true;
-        const entries = refreshMemory(forceFull);
+        const entries = await refreshMemory(forceFull);
         return {
           content: [{ type: "text" as const, text: formatRefresh(entries.length) }],
         };
@@ -166,7 +168,19 @@ async function main() {
         if (!query) {
           return { content: [{ type: "text" as const, text: "Escribí una pregunta o tema en el parámetro `query`." }], isError: true };
         }
-        const entries = searchMemory(query, limit);
+        let entries: ReturnType<typeof searchMemory>;
+        try {
+          const embed = await getEmbedder();
+          if (embed) {
+            const qEmb = await embed(query);
+            if (qEmb.length) entries = searchMemoryByEmbedding(qEmb, limit);
+            else entries = searchMemory(query, limit);
+          } else {
+            entries = searchMemory(query, limit);
+          }
+        } catch {
+          entries = searchMemory(query, limit);
+        }
         const text = formatAskWhy(entries, query);
         return { content: [{ type: "text" as const, text }] };
       }
