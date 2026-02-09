@@ -5,6 +5,8 @@ import { extractNestRoutes, type RouteInfo } from "./routes.js";
 import { collectEnvVars } from "./env.js";
 import { extractServiceCalls } from "./dependencies.js";
 import { extractOutboundMappings, type OutboundCall } from "./outbound-calls.js";
+import { extractOutboundSpringMappings } from "./outbound-spring.js";
+import { extractSpringRoutes } from "./routes-spring.js";
 import { glossaryFromRoutes } from "./glossary.js";
 import { extractConventions } from "./conventions.js";
 import { extractTablesFromSqlRepo } from "./db.js";
@@ -78,14 +80,22 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
       continue;
     }
 
-    if (repo.type === "nestjs" || repo.type === "express") {
+    if (repo.type === "nestjs" || repo.type === "express" || repo.type === "spring") {
       const routes =
         repo.type === "nestjs"
           ? extractNestRoutes(repo, workspaceRoot)
-          : [];
+          : repo.type === "spring"
+            ? extractSpringRoutes(repo, workspaceRoot)
+            : [];
       const envVars = collectEnvVars(repo.absolutePath);
-      const calls = extractServiceCalls(repo.absolutePath, repo.id, workspaceRoot, repoIds);
-      const outboundMappings = extractOutboundMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds);
+      const calls =
+        repo.type === "spring"
+          ? []
+          : extractServiceCalls(repo.absolutePath, repo.id, workspaceRoot, repoIds);
+      const outboundMappings =
+        repo.type === "spring"
+          ? extractOutboundSpringMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds)
+          : extractOutboundMappings(repo.absolutePath, repo.id, workspaceRoot, repoIds);
       const conventions = extractConventions(repo.absolutePath, repo.id, workspaceRoot);
       const glossaryTerms = glossaryFromRoutes(repo.id, routes, repo.controllersPath);
 
@@ -137,7 +147,9 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
       const summaryParts: string[] = [];
       summaryParts.push(repo.description || `${repo.name} (${repo.type})`);
       if (routes.length) summaryParts.push(`Expone ${routes.length} ruta(s): ${routes.slice(0, 5).map((r) => r.method + " " + r.fullPath).join(", ")}${routes.length > 5 ? "…" : ""}.`);
-      const toServices = [...new Set(calls.filter((c) => c.toService).map((c) => c.toService as string))];
+      const toServicesFromCalls = [...new Set(calls.filter((c) => c.toService).map((c) => c.toService as string))];
+      const toServicesFromMapping = [...byTarget.keys()].map((k) => k.split("\t")[1]).filter(Boolean);
+      const toServices = [...new Set([...toServicesFromCalls, ...toServicesFromMapping])];
       if (toServices.length) summaryParts.push(`Usa: ${toServices.join(", ")}.`);
       if (envVars.length) summaryParts.push(`Env: ${envVars.slice(0, 10).join(", ")}${envVars.length > 10 ? "…" : ""}.`);
 

@@ -18,12 +18,45 @@ export function clearMemory(): void {
   memory = [];
 }
 
+function removeAccents(s: string): string {
+  return s.normalize("NFD").replace(/\p{Mark}/gu, "");
+}
+
+/** Normaliza palabra para matching: minúscula, sin acentos, stem simple (plural/sufijos). */
+function normalizeToken(word: string): string[] {
+  const w = removeAccents(word.toLowerCase());
+  if (w.length < 2) return [];
+  const tokens = [w];
+  if (w.length > 3) {
+    if (w.endsWith("s") && !w.endsWith("ss")) tokens.push(w.slice(0, -1));
+    if (w.endsWith("es")) tokens.push(w.slice(0, -2));
+    if (w.endsWith("cion")) tokens.push(w.slice(0, -4) + "c");
+    if (w.endsWith("ing")) tokens.push(w.slice(0, -3));
+  }
+  return [...new Set(tokens)];
+}
+
+/** Tokeniza texto en palabras (alfanum + guiones). */
+function tokenize(text: string): string[] {
+  return removeAccents(text.toLowerCase())
+    .split(/[^a-z0-9-]+/)
+    .filter((w) => w.length > 1);
+}
+
 /**
- * Búsqueda simple por coincidencia en title, content, tags, source.
+ * Búsqueda por coincidencia de términos con ranking mejorado (estilo semántico):
+ * tokenización, normalización de plurales/sufijos y scoring por título, contenido y tags.
  */
 export function searchMemory(query: string, limit = 20): MemoryEntry[] {
   const q = query.toLowerCase().trim();
   if (!q) return memory.slice(0, limit);
+
+  const queryTokens = tokenize(q);
+  const queryStems = new Set<string>();
+  for (const t of queryTokens) {
+    for (const n of normalizeToken(t)) queryStems.add(n);
+  }
+  if (queryStems.size === 0) queryStems.add(q);
 
   const scored = memory.map((entry) => {
     let score = 0;
@@ -33,18 +66,22 @@ export function searchMemory(query: string, limit = 20): MemoryEntry[] {
     const tagsLower = entry.tags.join(" ").toLowerCase();
     const refsLower = entry.references.join(" ").toLowerCase();
 
-    if (titleLower.includes(q)) score += 10;
+    if (titleLower.includes(q)) score += 12;
     if (contentLower.includes(q)) score += 5;
     if (sourceLower.includes(q)) score += 3;
-    if (tagsLower.includes(q)) score += 4;
+    if (tagsLower.includes(q)) score += 5;
     if (refsLower.includes(q)) score += 2;
 
-    const words = q.split(/\s+/).filter((w) => w.length > 2);
-    for (const word of words) {
-      if (titleLower.includes(word)) score += 3;
-      if (contentLower.includes(word)) score += 1;
-      if (tagsLower.includes(word)) score += 2;
+    const titleTokens = new Set(tokenize(titleLower));
+    const contentTokens = new Set(tokenize(contentLower));
+    const tagTokens = new Set(tokenize(tagsLower));
+
+    for (const stem of queryStems) {
+      if (titleTokens.has(stem) || titleLower.includes(stem)) score += 4;
+      if (contentTokens.has(stem) || contentLower.includes(stem)) score += 2;
+      if (tagTokens.has(stem) || tagsLower.includes(stem)) score += 3;
     }
+
     return { entry, score };
   });
 

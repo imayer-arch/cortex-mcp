@@ -47,11 +47,30 @@ export function detectExpress(absolutePath: string): boolean {
 export interface DiscoveredRepo {
   id: string;
   name: string;
-  type: "nestjs" | "express" | "sql" | "front" | "other";
+  type: "nestjs" | "express" | "sql" | "front" | "spring" | "other";
   absolutePath: string;
   /** Relative to repo root, e.g. src/controllers */
   controllersPath: string;
   description?: string;
+}
+
+export function detectSpring(absolutePath: string): boolean {
+  const gradleKts = path.join(absolutePath, "build.gradle.kts");
+  const gradle = path.join(absolutePath, "build.gradle");
+  const pom = path.join(absolutePath, "pom.xml");
+  if (fs.existsSync(gradleKts)) {
+    const c = fs.readFileSync(gradleKts, "utf-8");
+    if (/spring-boot|org\.springframework\.boot/.test(c)) return true;
+  }
+  if (fs.existsSync(gradle)) {
+    const c = fs.readFileSync(gradle, "utf-8");
+    if (/spring-boot|org\.springframework\.boot/.test(c)) return true;
+  }
+  if (fs.existsSync(pom)) {
+    const c = fs.readFileSync(pom, "utf-8");
+    if (/spring-boot|springframework\.boot/.test(c)) return true;
+  }
+  return false;
 }
 
 /**
@@ -98,6 +117,18 @@ export function discoverRepos(workspaceRoot: string): DiscoveredRepo[] {
         absolutePath,
         controllersPath: "src",
         description: readJsonSafe<{ description?: string }>(path.join(absolutePath, "package.json"))?.description,
+      });
+      continue;
+    }
+
+    if (detectSpring(absolutePath)) {
+      result.push({
+        id: d.name,
+        name: humanizeDirName(d.name),
+        type: "spring",
+        absolutePath,
+        controllersPath: "src/main/kotlin",
+        description: readJsonSafe<{ description?: string }>(path.join(absolutePath, "pom.xml")) ? undefined : undefined,
       });
       continue;
     }

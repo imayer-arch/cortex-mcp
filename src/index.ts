@@ -136,7 +136,7 @@ async function main() {
       },
       {
         name: "cortex_export_endpoints",
-        description: "Exporta contratos y mapeo endpoint→servicio en JSON. Útil para cruzar con otro MCP (ej. movil-workspace-apis) o documentación.",
+        description: "Exporta contratos y mapeo endpoint→servicio en JSON (documentación, scripts o comparación manual). CORTEX no depende de ningún otro MCP.",
         inputSchema: {
           type: "object" as const,
           properties: {

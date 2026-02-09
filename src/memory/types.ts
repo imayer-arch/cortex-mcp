@@ -38,6 +38,8 @@ export interface MemoryEntry {
   line?: number;
   /** Datos estructurados para contratos, deps, env, etc. */
   meta?: Record<string, unknown>;
+  /** Vector de embedding para búsqueda semántica (opcional). */
+  embedding?: number[];
 }
 
 export interface CortexContext {

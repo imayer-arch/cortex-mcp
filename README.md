@@ -4,6 +4,8 @@
 
 Es **dinámico**: no asume nombres de repos ni servicios; se adapta a cualquier workspace según los repos que existan bajo `WORKSPACE_ROOT`.
 
+**CORTEX no depende de ningún otro MCP ni servicio externo:** solo usa el filesystem (`WORKSPACE_ROOT`) y sus propias dependencias. Podés usarlo solo o junto con otros MCPs; nunca los llama ni los requiere.
+
 ## ¿Qué hace CORTEX?
 
 - **Indexa** una sola vez (o cuando hacés `cortex_refresh`): recorre los repos, lee docs y código, y arma un índice (contratos, dependencias, quién llama a qué endpoint, env, ADRs, etc.).
@@ -72,7 +74,7 @@ Reiniciá Cursor o recargá MCP.
 | **cortex_impact_analysis** | ¿Este cambio rompe algo? Indicá repo/path/endpoint; CORTEX cruza contratos, quién llama y ADRs. |
 | **cortex_export_dependency_graph** | Grafo de dependencias (quién llama a quién) en formato **mermaid** o **dot**. Dinámico por workspace. |
 | **cortex_who_calls_endpoint** | Quién llama a un path: indicá un fragmento (ej. `applications`, `v1/private`). |
-| **cortex_export_endpoints** | Exporta contratos y mapeo en JSON para cruzar con otro MCP (ej. movil-workspace-apis). |
+| **cortex_export_endpoints** | Exporta contratos y mapeo en JSON (para documentación, scripts o comparación manual con otras fuentes). |
 
 ### Memoria persistente e incremental
 
@@ -93,10 +95,12 @@ Reiniciá Cursor o recargá MCP.
 
 ### Código (nuevo, fuente de verdad)
 
-- **Contratos entre servicios:** Rutas expuestas por cada repo (NestJS: `@Controller`, `@Get`/`@Post`/etc.) con método, path, body/response type. "bff-moor expone GET v1/private/applications…".
+- **Contratos entre servicios:** Rutas expuestas por cada repo:
+  - **NestJS/Express:** `@Controller`, `@Get`/`@Post`/etc. con método, path, body/response type.
+  - **Spring Boot (Kotlin/Java):** `@RestController`, `@GetMapping`/`@PostMapping`/etc. en `src/main/kotlin` o `src/main/java`. Detección por `build.gradle.kts`, `build.gradle` o `pom.xml` con spring-boot.
 - **Índice "qué hace este repo":** Por repo: descripción, cantidad de rutas, a qué servicios llama, variables de entorno. Generado desde código, no desde README.
-- **Dependencias entre repos:** Uso de `configService.get('X_HOST')` y clientes HTTP (axios) para inferir "bff-moor llama a ms-application".
-- **Mapeo endpoint → servicio:** En repos que usan `createAxiosInstance` (o similar) con `configService.get('...')` para la baseURL, CORTEX extrae qué servicio llaman y qué endpoints (método + path). Es **dinámico**: no hay nombres de repo fijos; el destino se resuelve por variable de env y por los IDs de repos del workspace. Este mapeo aparece en **cortex_get_context** (por repo) y se puede consultar solo con **cortex_get_endpoint_mapping** (opcional: filtrar por `fromRepo` o `toService`).
+- **Dependencias entre repos:** Uso de `configService.get('X_HOST')` y clientes HTTP (axios) en Node; en Spring: `RestTemplate`/`WebClient` con base URL desde `@Value("${...}")`.
+- **Mapeo endpoint → servicio:** En Node: `createAxiosInstance` + `configService.get('...')`. En Spring: `RestTemplate`/`WebClient` con URL de config. Es **dinámico**: no hay nombres de repo fijos; el destino se resuelve por variable de env/config y por los IDs de repos del workspace. Este mapeo aparece en **cortex_get_context** (por repo) y en **cortex_get_endpoint_mapping** (opcional: filtrar por `fromRepo` o `toService`).
 - **Glosario de dominios:** Términos extraídos de paths (applications, guarantees, origination) y de DTOs/types en controladores.
 - **Patrones y convenciones:** Detección de uso de Idempotency-Key, @UseGuards, @Roles en el código.
 - **Contexto por tabla/dominio (DB):** En **moor-sql**, indexación de tablas (CREATE TABLE / ALTER TABLE) con archivo y repo.
@@ -104,6 +108,10 @@ Reiniciá Cursor o recargá MCP.
 - **Changelog / hitos:** Contenido de **CHANGELOG.md** por repo (versiones, conventional commits, BREAKING).
 
 Todo lo anterior se obtiene **directamente del código**; no depende de documentación actualizada.
+
+### Búsqueda mejorada (estilo semántico)
+
+- Las consultas (**cortex_ask_why**, **cortex_get_context**, etc.) usan una búsqueda por términos con **tokenización**, **normalización de plurales y sufijos** (p. ej. "pagos" → "pago") y **scoring** por título, contenido y tags. Así preguntas como "por qué hacemos pagos idempotentes" encuentran mejor contenido relacionado aunque no uses las mismas palabras exactas.
 
 ## Enlace "todo sobre un endpoint"
 
