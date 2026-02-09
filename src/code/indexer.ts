@@ -12,9 +12,25 @@ import { glossaryFromRoutes } from "./glossary.js";
 import { extractConventions } from "./conventions.js";
 import { extractTablesFromSqlRepo } from "./db.js";
 import { extractChangelog } from "./changelog.js";
+import { extractFrontRoutes } from "./front-routes.js";
+import { extractFrontEndpointUsage } from "./front-endpoint-usage.js";
 
 function slug(repo: string, suffix: string): string {
   return `${repo}:${suffix}`.replace(/\//g, ":").slice(0, 150);
+}
+
+/** Convierte camelCase en palabras para búsqueda (ej. getBureauCallsStats -> ["get", "bureau", "calls", "stats"]). */
+function camelCaseToWords(name: string): string[] {
+  if (!name || name.length < 2) return [];
+  const words = name.replace(/([A-Z])/g, " $1").trim().toLowerCase().split(/\s+/);
+  return words.filter((w) => w.length > 1);
+}
+
+/** Extrae el nombre de la carpeta del controller desde filePath (ej. .../dashboard/dashboard.controller.ts -> dashboard). */
+function controllerFolderFromPath(filePath: string): string | undefined {
+  const dir = path.dirname(filePath);
+  const base = path.basename(dir);
+  return base && base !== "." ? base.toLowerCase() : undefined;
 }
 
 function toEntry(
@@ -174,11 +190,21 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
       for (const r of routes) {
         const contractContent = [
           `${repo.id} expone ${r.method} ${r.fullPath}`,
+          r.handlerName ? `Handler: ${r.handlerName}` : "",
           r.requestBodyType ? `Body: ${r.requestBodyType}` : "",
           r.responseType ? `Response: ${r.responseType}` : "",
         ]
           .filter(Boolean)
           .join(". ");
+        const pathTags = r.fullPath.split("/").filter(Boolean).map((s) => s.toLowerCase());
+        const handlerWords = r.handlerName ? camelCaseToWords(r.handlerName) : [];
+        const controllerTag = controllerFolderFromPath(r.filePath);
+        const tags = [
+          r.method.toLowerCase(),
+          ...pathTags,
+          ...handlerWords,
+          ...(controllerTag ? [controllerTag] : []),
+        ];
         const contractId = slug(repo.id, `contract:${r.method}:${r.fullPath}`);
         entries.push({
           ...toEntry(
@@ -187,7 +213,7 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
             r.filePath,
             `${r.method} ${r.fullPath}`,
             contractContent,
-            [r.method.toLowerCase(), ...r.fullPath.split("/").filter(Boolean)],
+            tags,
             {
               method: r.method,
               fullPath: r.fullPath,
@@ -280,6 +306,46 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
     }
 
     if (repo.type === "front" || repo.type === "other") {
+      const frontRoutes = extractFrontRoutes(repo.absolutePath, workspaceRoot);
+      for (const fr of frontRoutes) {
+        const pathSegments = fr.path.split("/").filter(Boolean).map((s) => s.toLowerCase());
+        const title = `${fr.componentName} (${fr.path})`;
+        const content = `Pantalla o ruta de front en ${repo.id}. Path: ${fr.path}. Componente: ${fr.componentName}. Key: ${fr.routeKey}.`;
+        entries.push(
+          toEntry(
+            "front_route",
+            repo.id,
+            fr.sourcePath,
+            title,
+            content,
+            ["front", "route", fr.routeKey.toLowerCase(), ...pathSegments],
+            { path: fr.path, routeKey: fr.routeKey, componentName: fr.componentName },
+            undefined
+          )
+        );
+      }
+      const frontUsages = extractFrontEndpointUsage(repo.absolutePath, workspaceRoot);
+      for (const fu of frontUsages) {
+        const parts: string[] = [];
+        if (fu.serviceName) parts.push(fu.serviceName);
+        if (fu.pathFragment) parts.push(fu.pathFragment);
+        if (parts.length === 0) continue;
+        const title = `${fu.sourcePath} usa ${parts.join(" / ")}`;
+        const content = `En ${repo.id}, ${fu.sourcePath} usa ${parts.join(", ")}.`;
+        const tags = ["front", "endpoint-usage", ...parts.map((p) => p.toLowerCase())];
+        entries.push(
+          toEntry(
+            "front_endpoint_usage",
+            repo.id,
+            fu.sourcePath,
+            title,
+            content,
+            tags,
+            { serviceName: fu.serviceName, pathFragment: fu.pathFragment },
+            undefined
+          )
+        );
+      }
       const envVars = collectEnvVars(repo.absolutePath);
       const changelogEntries = extractChangelog(repo.absolutePath);
       if (envVars.length) {

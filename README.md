@@ -90,8 +90,14 @@ Reiniciá Cursor o recargá MCP.
 
 ### Memoria persistente e incremental
 
+- **cortex_refresh trabaja a nivel de workspace:** un solo **cortex_refresh** recorre **todos** los repos bajo **WORKSPACE_ROOT** (la carpeta que contiene bff-moor, movil-front, ms-application, etc.) y reindexa docs y código de todos. No hace falta ejecutarlo por repo.
 - Al hacer **cortex_refresh**, el índice se guarda en **`.cortex-cache/index.json`** dentro del workspace. Al arrancar el MCP se carga ese caché; no hace falta reindexar cada vez.
 - Si los repos no cambiaron (por mtime), **cortex_refresh** usa el caché (refresh incremental). Usá **forceFull: true** para reindexar siempre.
+
+### Workspace dinámico
+
+- CORTEX no asume ramas ni nombres de repos: indexa lo que hay en **WORKSPACE_ROOT** en el momento del **cortex_refresh**. Si cambiás de rama o agregás endpoints nuevos, ejecutá **cortex_refresh** para que aparezcan en búsquedas y **cortex_get_context**.
+- Los contratos (endpoints) son buscables por **path**, **nombre del handler** (ej. `getBureauCallsStats`) y **palabras derivadas** (bureau, calls, stats), así consultas como "bureau calls" o "contador nosis" pueden encontrar el endpoint correcto si el path o el handler lo reflejan.
 
 ### Advertencias en get_context
 
@@ -107,8 +113,8 @@ Reiniciá Cursor o recargá MCP.
 
 ### Código (nuevo, fuente de verdad)
 
-- **Contratos entre servicios:** Rutas expuestas por cada repo:
-  - **NestJS/Express:** `@Controller`, `@Get`/`@Post`/etc. con método, path, body/response type.
+- **Contratos entre servicios:** Rutas expuestas por cada repo (buscables por path, nombre del handler y palabras derivadas, ej. "bureau", "calls"):
+  - **NestJS/Express:** `@Controller`, `@Get`/`@Post`/etc. con método, path, body/response type y nombre del handler.
   - **Spring Boot (Kotlin/Java):** `@RestController`, `@GetMapping`/`@PostMapping`/etc. en `src/main/kotlin` o `src/main/java`. Detección por `build.gradle.kts`, `build.gradle` o `pom.xml` con spring-boot.
   - **Go (chi, echo, gin, gorilla/mux):** Rutas en `cmd`, `internal`, `pkg`, `api` (`.Get("/path", ...)`, `.HandleFunc`, etc.). Detección por `go.mod` o `main.go`/`cmd`.
 - **Índice "qué hace este repo":** Por repo: descripción, cantidad de rutas, a qué servicios llama, variables de entorno. Generado desde código, no desde README.
@@ -119,6 +125,8 @@ Reiniciá Cursor o recargá MCP.
 - **Contexto por tabla/dominio (DB):** En **moor-sql**, indexación de tablas (CREATE TABLE / ALTER TABLE) con archivo y repo.
 - **Variables de entorno y config:** Por repo: variables usadas en `.env.example` y en código (`process.env.X`, `configService.get('X')`). En `get_context` se muestra "este servicio necesita X, Y, Z".
 - **Changelog / hitos:** Contenido de **CHANGELOG.md** por repo (versiones, conventional commits, BREAKING).
+- **Rutas y pantallas del front (React):** En repos tipo "front", se indexan rutas desde `routePaths` + `Routes`: path, componente y archivo (ej. `/configuracion` → Settings, `src/pages/Settings.tsx`). Así **cortex_how_to** ("configuración") puede devolver la pantalla correcta.
+- **Uso de endpoints en el front:** Se indexa qué archivos importan servicios (ej. `BureauDashboardService`) o usan URLs de API (`/v1/private/...`), para preguntas tipo "¿dónde se usa bureau-calls?".
 
 Todo lo anterior se obtiene **directamente del código**; no depende de documentación actualizada.
 

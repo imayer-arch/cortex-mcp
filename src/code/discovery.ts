@@ -83,13 +83,64 @@ export function detectGo(absolutePath: string): boolean {
   return false;
 }
 
+/** Package keys that indicate a frontend framework (React, Next, Vite, Nuxt, Angular, Svelte, etc.). */
+const FRONTEND_DEPS = new Set([
+  "react",
+  "react-dom",
+  "vite",
+  "next",
+  "nuxt",
+  "@nuxt/core",
+  "@angular/core",
+  "svelte",
+  "@sveltejs/kit",
+]);
+
+/** True if path looks like a frontend app: has a frontend framework and a routing structure. */
+export function detectFront(absolutePath: string): boolean {
+  const pkgPath = path.join(absolutePath, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  const pkg = readJsonSafe<{ dependencies?: Record<string, string>; devDependencies?: Record<string, string> }>(pkgPath);
+  if (!pkg) return false;
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  const hasFramework = Object.keys(deps).some((k) => FRONTEND_DEPS.has(k));
+  if (!hasFramework) return false;
+  // Require some routing / app structure so we don't tag random node projects
+  const routePathsTs = path.join(absolutePath, "src", "routes", "routePaths.ts");
+  const routePathsJs = path.join(absolutePath, "src", "routes", "routePaths.js");
+  const pagesDir = path.join(absolutePath, "pages");
+  const appDir = path.join(absolutePath, "app");
+  const srcAppDir = path.join(absolutePath, "src", "app");
+  const hasStructure =
+    fs.existsSync(routePathsTs) ||
+    fs.existsSync(routePathsJs) ||
+    (fs.existsSync(pagesDir) && fs.statSync(pagesDir).isDirectory()) ||
+    (fs.existsSync(appDir) && fs.statSync(appDir).isDirectory()) ||
+    (fs.existsSync(srcAppDir) && fs.statSync(srcAppDir).isDirectory());
+  return hasStructure;
+}
+
 /**
- * Discover repos in workspace: NestJS, Express, moor-sql (DB), and others.
+ * Discover repos in workspace: NestJS, Express, moor-sql (DB), front, and others.
+ * If workspaceRoot itself is a front repo (e.g. multi-root with movil-front as one root), it is added as one repo.
  */
 export function discoverRepos(workspaceRoot: string): DiscoveredRepo[] {
-  if (!fs.existsSync(workspaceRoot)) return [];
-  const dirs = fs.readdirSync(workspaceRoot, { withFileTypes: true });
+  if (!fs.existsSync(workspaceRoot) || !fs.statSync(workspaceRoot).isDirectory()) return [];
   const result: DiscoveredRepo[] = [];
+
+  // Multi-root: workspace root can be the front repo itself (e.g. cwd = movil-front)
+  if (detectFront(workspaceRoot)) {
+    const name = path.basename(workspaceRoot);
+    result.push({
+      id: name,
+      name: humanizeDirName(name),
+      type: "front",
+      absolutePath: workspaceRoot,
+      controllersPath: "",
+    });
+  }
+
+  const dirs = fs.readdirSync(workspaceRoot, { withFileTypes: true });
 
   for (const d of dirs) {
     if (!d.isDirectory() || d.name.startsWith(".") || EXCLUDE.has(d.name)) continue;
@@ -155,7 +206,8 @@ export function discoverRepos(workspaceRoot: string): DiscoveredRepo[] {
       continue;
     }
 
-    if (d.name === "movil-front" || d.name.endsWith("-front")) {
+    // Cualquier carpeta que sea una app front (React, Next, Vite, etc.) por estructura, no por nombre
+    if (detectFront(absolutePath)) {
       result.push({
         id: d.name,
         name: humanizeDirName(d.name),

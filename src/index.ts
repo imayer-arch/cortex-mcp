@@ -233,6 +233,8 @@ async function main() {
         const contracts = findContracts(undefined, topic);
         const decisions = findDecisions(topic);
         const glossary = findGlossary(topic);
+        const frontRoutes = searchEntries.filter((e) => e.kind === "front_route");
+        const frontEndpointUsages = searchEntries.filter((e) => e.kind === "front_endpoint_usage");
         const repoIds = new Set<string>();
         for (const e of [...searchEntries, ...contracts, ...glossary]) {
           repoIds.add(e.source);
@@ -245,7 +247,7 @@ async function main() {
         if (summaries.length === 0)
           for (const e of searchEntries)
             if (e.kind === "repo_summary") summaries.push(e);
-        const text = formatHowTo(topic, summaries, contracts, decisions, glossary);
+        const text = formatHowTo(topic, summaries, contracts, decisions, glossary, frontRoutes, frontEndpointUsages);
         return { content: [{ type: "text" as const, text }] };
       }
 

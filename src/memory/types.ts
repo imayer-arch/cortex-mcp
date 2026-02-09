@@ -15,7 +15,9 @@ export type MemoryKind =
   | "env_config"
   | "db_table"
   | "changelog"
-  | "endpoint_mapping";
+  | "endpoint_mapping"
+  | "front_route"
+  | "front_endpoint_usage";
 
 export interface MemoryEntry {
   id: string;

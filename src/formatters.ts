@@ -13,6 +13,9 @@ export function formatEntry(entry: MemoryEntry, includeContent = false): string 
   let out = `### ${entry.title}\n`;
   out += `- **Origen:** ${entry.source} — ${fileLink(entry)}\n`;
   out += `- **Tipo:** ${entry.kind}\n`;
+  if (entry.kind === "front_route" && entry.meta?.path) {
+    out += `- **Path:** ${entry.meta.path}\n`;
+  }
   if (entry.meta && (entry.kind === "contract" || entry.kind === "dependency" || entry.kind === "env_config" || entry.kind === "endpoint_mapping")) {
     if (entry.kind === "contract" && entry.meta.method)
       out += `- **Método/Path:** ${entry.meta.method} ${entry.meta.fullPath ?? ""}\n`;
@@ -161,9 +164,19 @@ export function formatHowTo(
   summaries: MemoryEntry[],
   contracts: MemoryEntry[],
   decisions: MemoryEntry[],
-  glossary: MemoryEntry[]
+  glossary: MemoryEntry[],
+  frontRoutes: MemoryEntry[] = [],
+  frontEndpointUsages: MemoryEntry[] = []
 ): string {
   let out = `## CORTEX — Cómo se hace "${topic}" en el workspace\n\n`;
+  if (frontRoutes.length > 0) {
+    out += "### Pantallas / Rutas (front)\n\n";
+    for (const e of frontRoutes.slice(0, 10)) {
+      const pathInfo = e.meta?.path ? ` — \`${e.meta.path}\`` : "";
+      out += `- **${e.title}** — ${e.source}${pathInfo} — ${fileLink(e)}\n`;
+    }
+    out += "\n";
+  }
   if (summaries.length > 0) {
     out += "### Repos involucrados\n\n";
     for (const e of summaries.slice(0, 5)) {
@@ -175,6 +188,13 @@ export function formatHowTo(
     out += "### Endpoints (código)\n\n";
     for (const e of contracts.slice(0, 10)) {
       out += `- ${e.title} — ${e.source} — ${e.sourcePath}\n`;
+    }
+    out += "\n";
+  }
+  if (frontEndpointUsages.length > 0) {
+    out += "### Uso de endpoints en el front\n\n";
+    for (const e of frontEndpointUsages.slice(0, 8)) {
+      out += `- ${e.title} — ${fileLink(e)}\n`;
     }
     out += "\n";
   }
@@ -191,7 +211,14 @@ export function formatHowTo(
       out += `- ${e.title} (${e.source})\n`;
     }
   }
-  if (!summaries.length && !contracts.length && !decisions.length && !glossary.length) {
+  const hasAny =
+    frontRoutes.length ||
+    summaries.length ||
+    contracts.length ||
+    frontEndpointUsages.length ||
+    decisions.length ||
+    glossary.length;
+  if (!hasAny) {
     out += `No encontré evidencia específica para **"${topic}"**. Probá con \`cortex_ask_why\` o \`cortex_get_context\` usando el nombre del repo o un término más amplio.`;
   }
   return out;
