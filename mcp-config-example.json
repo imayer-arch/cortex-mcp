@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cortex": {
+      "command": "node",
+      "args": ["C:/Users/TU_USUARIO/OneDrive/Desktop/Projects/cortex-mcp/dist/index.js"],
+      "env": {
+        "WORKSPACE_ROOT": "C:/Users/TU_USUARIO/OneDrive/Desktop/Projects"
+      }
+    }
+  }
+}
