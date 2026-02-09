@@ -1,0 +1,11 @@
+# Don’t publish source or tooling; publish only what’s needed to run.
+src/
+scripts/
+tsconfig.json
+.git/
+.gitignore
+.env
+.env.local
+.cortex-cache/
+*.log
+mcp-config-example.json

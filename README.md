@@ -143,4 +143,4 @@ Para una pregunta como *"todo sobre POST /origination"*: usá **cortex_get_conte
 
 ---
 
-*CORTEX — El cerebro del producto que no olvida.*
+**Hecho por Ivan Meyer ([imayer-arch](https://github.com/imayer-arch))** — CORTEX, el cerebro del producto que no olvida.
