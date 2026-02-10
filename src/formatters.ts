@@ -135,6 +135,39 @@ export function formatRefresh(count: number): string {
   return `CORTEX actualizó la memoria. **${count}** pieza(s) indexada(s): docs (READMEs, ADRs), código (contratos, dependencias, mapeo endpoint→servicio, env, glosario, convenciones, tablas DB, changelog).`;
 }
 
+/** Pantalla = ruta + endpoints usados + acciones UI que disparan llamadas. */
+export interface FlowScreen {
+  path: string;
+  componentName: string;
+  sourcePath: string;
+  source: string;
+  endpoints: { methodName: string; httpMethod: string; pathPattern: string }[];
+  uiActions: { title: string; sourcePath: string; source: string }[];
+}
+
+export function formatGetFlow(topic: string, screens: FlowScreen[]): string {
+  if (screens.length === 0) {
+    return `## CORTEX — Flujo "${topic}"\n\nNo encontré pantallas ni rutas para este tema. Probá con \`cortex_how_to\` o términos como "committee", "comite", "origination".`;
+  }
+  let out = `## CORTEX — Flujo "${topic}"\n\n`;
+  out += "En una sola vista: **pantallas**, **endpoints por pantalla** y **acción UI → endpoint**.\n\n";
+  for (const screen of screens) {
+    out += `### Pantalla: \`${screen.path}\` (${screen.componentName})\n`;
+    out += `- **Origen:** ${screen.source} — \`${screen.sourcePath}\`\n`;
+    if (screen.endpoints.length > 0) {
+      out += `- **Endpoints en esta pantalla:** ${screen.endpoints.map((ep) => `${ep.httpMethod} ${ep.pathPattern}`).join("; ")}\n`;
+    }
+    if (screen.uiActions.length > 0) {
+      out += `- **Al hacer X → se llama Y:**\n`;
+      for (const ua of screen.uiActions) {
+        out += `  - ${ua.title}\n`;
+      }
+    }
+    out += "\n";
+  }
+  return out;
+}
+
 export function formatEndpointMapping(entries: MemoryEntry[]): string {
   if (entries.length === 0) {
     return "CORTEX no tiene mapeo endpoint→servicio indexado. Los repos que llaman a otros (p. ej. BFF que usa createAxiosInstance con configService.get) se indexan al hacer **cortex_refresh**.";
@@ -166,9 +199,28 @@ export function formatHowTo(
   decisions: MemoryEntry[],
   glossary: MemoryEntry[],
   frontRoutes: MemoryEntry[] = [],
-  frontEndpointUsages: MemoryEntry[] = []
+  frontEndpointUsages: MemoryEntry[] = [],
+  serviceEndpoints: MemoryEntry[] = [],
+  routeEndpoints: MemoryEntry[] = [],
+  uiActions: MemoryEntry[] = []
 ): string {
   let out = `## CORTEX — Cómo se hace "${topic}" en el workspace\n\n`;
+  if (routeEndpoints.length > 0) {
+    out += "### Ruta → Endpoints (qué se llama en cada pantalla)\n\n";
+    for (const e of routeEndpoints.slice(0, 10)) {
+      const eps = (e.meta?.endpoints as { methodName: string; httpMethod: string; pathPattern: string }[]) ?? [];
+      const list = eps.length ? eps.map((ep) => `${ep.httpMethod} ${ep.pathPattern}`).join("; ") : "—";
+      out += `- **${e.meta?.path ?? e.title}** (${e.meta?.componentName ?? ""}) — ${list} — ${fileLink(e)}\n`;
+    }
+    out += "\n";
+  }
+  if (uiActions.length > 0) {
+    out += "### Al hacer X se llama Y (acción UI → endpoint)\n\n";
+    for (const e of uiActions.slice(0, 12)) {
+      out += `- ${e.title} — ${e.source} — ${fileLink(e)}\n`;
+    }
+    out += "\n";
+  }
   if (frontRoutes.length > 0) {
     out += "### Pantallas / Rutas (front)\n\n";
     for (const e of frontRoutes.slice(0, 10)) {
@@ -188,6 +240,13 @@ export function formatHowTo(
     out += "### Endpoints (código)\n\n";
     for (const e of contracts.slice(0, 10)) {
       out += `- ${e.title} — ${e.source} — ${e.sourcePath}\n`;
+    }
+    out += "\n";
+  }
+  if (serviceEndpoints.length > 0) {
+    out += "### Endpoints del front (servicio → método HTTP path)\n\n";
+    for (const e of serviceEndpoints.slice(0, 15)) {
+      out += `- ${e.title} — ${e.source}\n`;
     }
     out += "\n";
   }
@@ -212,9 +271,12 @@ export function formatHowTo(
     }
   }
   const hasAny =
+    routeEndpoints.length ||
+    uiActions.length ||
     frontRoutes.length ||
     summaries.length ||
     contracts.length ||
+    serviceEndpoints.length ||
     frontEndpointUsages.length ||
     decisions.length ||
     glossary.length;

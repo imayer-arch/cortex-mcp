@@ -1,8 +1,8 @@
-# CORTEX — La memoria viva del sistema
+# CORTEX — El córtex de tu workspace
 
 **CORTEX** es un MCP (Model Context Protocol) que actúa como **capa de memoria** de tu workspace: indexa documentación (READMEs, ADRs, docs), decisiones (post-mortems) y **código** (rutas, contratos, dependencias entre repos, mapeo endpoint→servicio, env, glosario, convenciones, tablas DB, changelog). Todo eso queda en un **índice en memoria** (y opcionalmente persistido en disco). Las herramientas de CORTEX consultan ese índice y responden con evidencia y enlaces a archivos — sin volver a escanear el filesystem en cada pregunta.
 
-Es **dinámico**: no asume nombres de repos ni servicios; se adapta a cualquier workspace según los repos que existan bajo `WORKSPACE_ROOT`.
+Es **dinámico**: no asume nombres de repos ni servicios; se adapta a cualquier workspace según los repos que existan bajo `WORKSPACE_ROOT`. **No almacena ni expone datos sensibles**: solo indexa estructura, contratos y documentación del código.
 
 **CORTEX no depende de ningún otro MCP ni servicio externo:** solo usa el filesystem (`WORKSPACE_ROOT`) y sus propias dependencias. Podés usarlo solo o junto con otros MCPs; nunca los llama ni los requiere.
 
@@ -87,6 +87,23 @@ Reiniciá Cursor o recargá MCP.
 | **cortex_export_dependency_graph** | Grafo de dependencias (quién llama a quién) en formato **mermaid** o **dot**. Dinámico por workspace. |
 | **cortex_who_calls_endpoint** | Quién llama a un path: indicá un fragmento (ej. `applications`, `v1/private`). |
 | **cortex_export_endpoints** | Exporta contratos y mapeo en JSON (para documentación, scripts o comparación manual con otras fuentes). |
+| **cortex_export_openapi** | Exporta OpenAPI 3.0 desde los contratos indexados para **mockear** servicios sin levantarlos. Opcional: `serviceId`, `topic`, `outputPath` (escribe el JSON en ese path dentro del workspace). Genera **examples** desde tipos del front (response_schema) cuando el contrato tiene responseType. Incluye instrucciones para Prism con validación (404/422 quirúrgico). Sin datos sensibles. |
+| **cortex_list_running_mocks** | Indica **qué servicios mockeados están levantados**: consulta los puertos que CORTEX asigna a cada servicio (4010, 4011, …) y devuelve cuáles responden. Útil para preguntas como «qué mocks tengo» o «qué servicios están mockeados». |
+
+### Cómo activar / levantar los servicios (mock)
+
+CORTEX **descubre** los servicios y microservicios del workspace a partir del código (contratos indexados). En lugar de levantar cada proceso (que suele ser lento y pesado), podés **levantar un mock** que simula las respuestas y valida lo que envía el front:
+
+1. **Consultar qué servicios hay:** Llamá **cortex_export_openapi** sin parámetros: CORTEX te lista los servicios con contratos indexados (ej. ms-application, bff-moor).
+2. **Exportar OpenAPI de un servicio o flujo:** Llamá **cortex_export_openapi** con `serviceId: "ms-application"` o con `topic: "committee"`. CORTEX devuelve el OpenAPI (JSON) y las **instrucciones** para levantar el mock.
+3. **Levantar el mock:** Guardá el OpenAPI en un archivo (ej. `cortex-mocks/ms-application.json`) y ejecutá el comando que indica CORTEX (ej. `npx prism mock cortex-mocks/ms-application.json --port 4010 --validate-request`). Eso levanta **un solo proceso** que responde a las mismas rutas que el servicio real y **valida** el request: si el front envía un body que no coincide con el contrato, el mock responde con error (422) y detalle en el body (visible en DevTools → Network o en Postman).
+4. **Apuntar el front al mock:** El front tiene que enviar las requests al puerto del mock en vez del backend real. Según cómo esté armado el proyecto:
+   - **Si usa variable de entorno** para la base URL del API (ej. Vite: `VITE_API_URL`, React: `REACT_APP_API_URL`), creá o editá `.env.local` en el repo del front y poné esa variable apuntando al mock, ej. `VITE_API_URL=http://localhost:4010`. Reiniciá el dev server del front para que tome el cambio.
+   - **Si usa proxy** en el dev server (vite.config, webpack, etc.) para reenviar rutas tipo `/v1/...` al backend, cambiá el `target` del proxy a `http://localhost:4010` (o el puerto que indique CORTEX). Así las llamadas del front pasan por el proxy y llegan al mock.
+   En ambos casos **no hace falta tocar código**; solo la config o el `.env`. Las mismas URLs relativas (ej. `/v1/private/applications`) terminan yendo al mock.
+5. **Consultar qué mocks están levantados:** Llamá **cortex_list_running_mocks**: CORTEX consulta los puertos 4010, 4011, … (asignados a cada servicio con contratos) y te dice cuáles responden (ej. «ms-application (4010) levantado; bff-moor (4011) no responde»).
+
+Así **activás** los servicios necesarios en forma de mock, sin deploy ni levantar los microservicios/servicios reales. Todo lo que usa CORTEX sale del **índice** (código); no se incluyen datos sensibles.
 
 ### Memoria persistente e incremental
 

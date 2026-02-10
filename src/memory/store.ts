@@ -200,6 +200,27 @@ export function findGlossary(term?: string, repoId?: string): MemoryEntry[] {
   return entries;
 }
 
+/**
+ * Buscar schema de respuesta por nombre de tipo (exacto o normalizado).
+ * Útil para generar examples en OpenAPI desde tipos del front.
+ */
+export function findResponseSchema(typeName: string): MemoryEntry | undefined {
+  if (!typeName || typeof typeName !== "string") return undefined;
+  const normalized = typeName.trim().replace(/\s+/g, "");
+  return memory.find(
+    (e) =>
+      e.kind === "response_schema" &&
+      (e.title === typeName ||
+        e.title === normalized ||
+        (e.title && e.title.replace(/\s+/g, "") === normalized))
+  );
+}
+
+/** Todas las entradas response_schema (para construir Map typeName → schema). */
+export function findAllResponseSchemas(): MemoryEntry[] {
+  return memory.filter((e) => e.kind === "response_schema");
+}
+
 export function findDbTables(repoId?: string, tableName?: string): MemoryEntry[] {
   let entries = memory.filter((e) => e.kind === "db_table");
   if (repoId) entries = entries.filter((e) => e.source === repoId);

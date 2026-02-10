@@ -14,6 +14,10 @@ import { extractTablesFromSqlRepo } from "./db.js";
 import { extractChangelog } from "./changelog.js";
 import { extractFrontRoutes } from "./front-routes.js";
 import { extractFrontEndpointUsage } from "./front-endpoint-usage.js";
+import { extractServiceEndpoints } from "./front-service-endpoints.js";
+import { extractUiActions } from "./front-ui-actions.js";
+import { buildRouteEndpoints } from "./route-endpoints.js";
+import { extractResponseSchemas } from "./front-types.js";
 
 function slug(repo: string, suffix: string): string {
   return `${repo}:${suffix}`.replace(/\//g, ":").slice(0, 150);
@@ -324,11 +328,34 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
           )
         );
       }
-      const frontUsages = extractFrontEndpointUsage(repo.absolutePath, workspaceRoot);
+      const serviceEndpoints = extractServiceEndpoints(repo.absolutePath, workspaceRoot);
+      const serviceToMethods = new Map<string, Set<string>>();
+      for (const se of serviceEndpoints) {
+        const paramsStr = se.paramNames?.length ? `(${se.paramNames.join(", ")})` : "";
+        const title = `${se.serviceName}.${se.methodName}${paramsStr} — ${se.httpMethod} ${se.pathPattern}`;
+        const content = `En ${repo.id}, ${se.serviceName} exporta ${se.methodName}${paramsStr}: ${se.httpMethod} ${se.pathPattern}.`;
+        const tags = ["front", "service-endpoint", se.serviceName.toLowerCase(), se.methodName.toLowerCase(), se.httpMethod.toLowerCase(), ...(se.paramNames ?? []).map((p) => p.toLowerCase())];
+        entries.push(
+          toEntry(
+            "service_endpoint",
+            repo.id,
+            se.sourcePath,
+            title,
+            content,
+            tags,
+            { serviceName: se.serviceName, methodName: se.methodName, httpMethod: se.httpMethod, pathPattern: se.pathPattern, paramNames: se.paramNames },
+            undefined
+          )
+        );
+        if (!serviceToMethods.has(se.serviceName)) serviceToMethods.set(se.serviceName, new Set());
+        serviceToMethods.get(se.serviceName)!.add(se.methodName);
+      }
+      const frontUsages = extractFrontEndpointUsage(repo.absolutePath, workspaceRoot, serviceToMethods);
       for (const fu of frontUsages) {
         const parts: string[] = [];
         if (fu.serviceName) parts.push(fu.serviceName);
         if (fu.pathFragment) parts.push(fu.pathFragment);
+        if (fu.invokedMethods?.length) parts.push(...fu.invokedMethods);
         if (parts.length === 0) continue;
         const title = `${fu.sourcePath} usa ${parts.join(" / ")}`;
         const content = `En ${repo.id}, ${fu.sourcePath} usa ${parts.join(", ")}.`;
@@ -341,7 +368,80 @@ export function indexCode(workspaceRoot: string): MemoryEntry[] {
             title,
             content,
             tags,
-            { serviceName: fu.serviceName, pathFragment: fu.pathFragment },
+            { serviceName: fu.serviceName, pathFragment: fu.pathFragment, invokedMethods: fu.invokedMethods },
+            undefined
+          )
+        );
+      }
+      const allServiceMethodNames = new Set<string>();
+      const methodToEndpoint = new Map<string, { httpMethod: string; pathPattern: string }>();
+      for (const se of serviceEndpoints) {
+        allServiceMethodNames.add(se.methodName);
+        if (!methodToEndpoint.has(se.methodName)) {
+          methodToEndpoint.set(se.methodName, { httpMethod: se.httpMethod, pathPattern: se.pathPattern });
+        }
+      }
+      const routeEndpointsList = buildRouteEndpoints(
+        repo.absolutePath,
+        repo.id,
+        frontRoutes,
+        frontUsages,
+        methodToEndpoint
+      );
+      for (const re of routeEndpointsList) {
+        const endpointStrs = re.endpoints.map((e) => `${e.httpMethod} ${e.pathPattern}`);
+        const title = re.endpoints.length
+          ? `Ruta ${re.path} — ${re.endpoints.length} endpoint(s): ${endpointStrs.slice(0, 3).join("; ")}${re.endpoints.length > 3 ? "…" : ""}`
+          : `Ruta ${re.path} (${re.componentName})`;
+        const content = re.endpoints.length
+          ? `En ${repo.id}, la ruta ${re.path} (${re.componentName}) usa: ${re.endpoints.map((e) => `${e.methodName} ${e.httpMethod} ${e.pathPattern}`).join(", ")}.`
+          : `Ruta ${re.path} en ${repo.id}. Componente: ${re.componentName}.`;
+        const pathSegs = re.path.split("/").filter(Boolean).map((s) => s.toLowerCase().replace(/^:/, ""));
+        const tags = ["front", "route-endpoints", re.routeKey.toLowerCase(), re.componentName.toLowerCase(), ...pathSegs];
+        entries.push(
+          toEntry(
+            "route_endpoints",
+            repo.id,
+            re.sourcePath,
+            title,
+            content,
+            tags,
+            { path: re.path, routeKey: re.routeKey, componentName: re.componentName, endpoints: re.endpoints },
+            undefined
+          )
+        );
+      }
+      const responseSchemas = extractResponseSchemas(repo.absolutePath, workspaceRoot);
+      for (const rs of responseSchemas) {
+        const content = `Tipo ${rs.typeName} con propiedades: ${rs.properties.map((p) => `${p.name}: ${p.type}`).join(", ")}. En ${repo.id}.`;
+        entries.push(
+          toEntry(
+            "response_schema",
+            repo.id,
+            rs.sourcePath,
+            rs.typeName,
+            content,
+            ["front", "type", "response-schema", rs.typeName.toLowerCase()],
+            { typeName: rs.typeName, properties: rs.properties },
+            rs.line
+          )
+        );
+      }
+      const uiActions = extractUiActions(repo.absolutePath, workspaceRoot, allServiceMethodNames, methodToEndpoint);
+      for (const ua of uiActions) {
+        const endpointPart = ua.httpMethod && ua.pathPattern ? ` — ${ua.httpMethod} ${ua.pathPattern}` : "";
+        const title = `Al hacer "${ua.label}" se llama ${ua.methodNames.join(", ")}${endpointPart}`;
+        const content = `En ${repo.id}, en ${ua.sourcePath}, al hacer "${ua.label}" (handler ${ua.handlerName}) se invocan: ${ua.methodNames.join(", ")}.`;
+        const tags = ["front", "ui-action", ua.label.toLowerCase().replace(/\s+/g, "-"), ...ua.methodNames.map((m) => m.toLowerCase())];
+        entries.push(
+          toEntry(
+            "ui_action",
+            repo.id,
+            ua.sourcePath,
+            title,
+            content,
+            tags,
+            { label: ua.label, handlerName: ua.handlerName, methodNames: ua.methodNames, httpMethod: ua.httpMethod, pathPattern: ua.pathPattern },
             undefined
           )
         );

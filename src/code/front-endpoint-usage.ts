@@ -6,6 +6,8 @@ export interface FrontEndpointUsage {
   serviceName?: string;
   pathFragment?: string;
   urlLiteral?: string;
+  /** Nombres de métodos del servicio que este archivo invoca (ej. getApplication, getDebts). */
+  invokedMethods?: string[];
 }
 
 function readSafe(filePath: string): string | null {
@@ -56,7 +58,24 @@ function extractApiPathFragments(content: string): string[] {
   return [...fragments];
 }
 
-export function extractFrontEndpointUsage(repoPath: string, workspaceRoot: string): FrontEndpointUsage[] {
+/** Detecta invocaciones a métodos en el contenido (ej. getApplication(, getDebts(). */
+function findInvokedMethodsInContent(content: string, methodNames: Set<string>): string[] {
+  const invoked: string[] = [];
+  for (const method of methodNames) {
+    const re = new RegExp("\\b" + method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*\\(", "g");
+    if (re.test(content)) invoked.push(method);
+  }
+  return invoked;
+}
+
+/**
+ * @param serviceToMethods Si se pasa (serviceName -> set de methodNames), se agrega invokedMethods por servicio.
+ */
+export function extractFrontEndpointUsage(
+  repoPath: string,
+  workspaceRoot: string,
+  serviceToMethods?: Map<string, Set<string>>
+): FrontEndpointUsage[] {
   const results: FrontEndpointUsage[] = [];
   const srcDir = path.join(repoPath, "src");
   if (!fs.existsSync(srcDir) || !fs.statSync(srcDir).isDirectory()) return results;
@@ -73,7 +92,16 @@ export function extractFrontEndpointUsage(repoPath: string, workspaceRoot: strin
     const sourcePath = relPath.startsWith("..") ? path.relative(repoPath, filePath).replace(/\\/g, "/") : relPath;
 
     for (const serviceName of services) {
-      results.push({ sourcePath, serviceName });
+      const methodsForService = serviceToMethods?.get(serviceName);
+      const invokedMethods =
+        methodsForService && methodsForService.size > 0
+          ? findInvokedMethodsInContent(content, methodsForService)
+          : undefined;
+      results.push({
+        sourcePath,
+        serviceName,
+        invokedMethods: invokedMethods?.length ? invokedMethods : undefined,
+      });
     }
     for (const pathFragment of pathFragments) {
       if (!results.some((r) => r.sourcePath === sourcePath && r.pathFragment === pathFragment)) {

@@ -17,7 +17,11 @@ export type MemoryKind =
   | "changelog"
   | "endpoint_mapping"
   | "front_route"
-  | "front_endpoint_usage";
+  | "front_endpoint_usage"
+  | "service_endpoint"
+  | "ui_action"
+  | "route_endpoints"
+  | "response_schema";
 
 export interface MemoryEntry {
   id: string;
